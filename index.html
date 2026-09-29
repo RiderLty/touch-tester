@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07090d">
+<link rel="manifest" href="manifest.json">
 <title>Touch Tester</title>
 <!--
   设计:测试仪器风格 — 单一暗色主题(示波器/试验台),数据全部等宽字体,
@@ -55,13 +58,13 @@
   [hidden] { display: none !important; }
   button {
     font-family: var(--font-data);
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0.04em;
     color: var(--fg);
     background: var(--surface);
     border: 1px solid var(--edge-strong);
     border-radius: 3px;
-    padding: 6px 10px;
+    padding: 5px 8px;
     cursor: pointer;
     touch-action: manipulation;
   }
@@ -79,9 +82,9 @@
   }
   #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-  /* ============ HUD ============ */
+  /* ============ HUD:除顶栏和设置抽屉外全部穿透,不拦截触控 ============ */
   .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-  .hud > * { pointer-events: auto; }
+  #topbar, #settings { pointer-events: auto; }
 
   #topbar {
     position: absolute;
@@ -95,13 +98,15 @@
   }
   #topbar .cell {
     background: var(--surface-solid);
-    padding: 7px 12px;
+    padding: 4px 8px;
     display: flex;
     flex-direction: column;
     justify-content: center;
     min-width: 0;
   }
-  #topbar .cell.btns { flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; }
+  #topbar .cell.stat { flex-direction: row; align-items: baseline; gap: 4px; }
+  #topbar .cell.stat .k { font-size: 8px; }
+  #topbar .cell.btns { flex-direction: row; align-items: center; gap: 5px; flex-wrap: wrap; }
   #topbar .cell.spacer { flex: 1; }
   .k {
     font-family: var(--font-data);
@@ -112,12 +117,12 @@
   }
   .v {
     font-family: var(--font-data);
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .v.small { font-size: 11px; font-weight: 400; color: var(--dim); }
+  .v.small { font-size: 10px; font-weight: 400; color: var(--dim); }
   #brand {
     font-family: var(--font-display);
     font-weight: 700;
@@ -212,7 +217,7 @@
   /* 设置抽屉 */
   #settings {
     position: absolute;
-    top: calc(52px + env(safe-area-inset-top, 0px));
+    top: calc(40px + env(safe-area-inset-top, 0px));
     right: 10px;
     width: 250px;
     background: var(--surface-solid);
@@ -243,6 +248,15 @@
   }
   #settings input[type="checkbox"] { accent-color: var(--accent); }
   #settings input[type="range"] { width: 110px; accent-color: var(--accent); }
+  #settings .cfgbtns { display: flex; gap: 6px; }
+  #settings .cfgbtns button { flex: 1; }
+  #settings .viewline {
+    font-family: var(--font-data);
+    font-size: 9.5px;
+    color: var(--faint);
+    border-top: 1px solid var(--edge);
+    padding-top: 8px;
+  }
   #settings .capgrid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -314,10 +328,13 @@
     letter-spacing: 0.06em;
   }
 
+  @media (max-width: 700px) {
+    .brand-cell { display: none; }
+  }
   @media (max-width: 640px) {
     #logPanel { width: min(52vw, 300px); }
     #cards { max-width: 44vw; }
-    .v { font-size: 12px; }
+    #topbar .cell { padding: 4px 6px; }
   }
 </style>
 </head>
@@ -332,32 +349,32 @@
   <h1>Touch<em>·</em>Tester</h1>
   <p>触摸 / 多点触控测试台 — Pointer Events · Touch Events · 轨迹追踪 · 事件日志<br>点击开始将请求进入全屏,随后用手指触碰屏幕即可。</p>
   <button id="startBtn">点击开始</button>
+  <p id="fsHint" hidden>此浏览器不支持全屏 API（iPhone Safari 属此类）。可在 Safari 用「分享 → 添加到主屏幕」，从主屏幕图标打开即为全屏运行。</p>
   <div class="caps" id="introCaps"></div>
 </div>
 
 <!-- HUD -->
 <div class="hud">
   <div id="topbar">
-    <div class="cell"><span id="brand">Touch Tester</span></div>
-    <div class="cell"><span class="k">触点</span><span class="v" id="stActive">0</span></div>
-    <div class="cell"><span class="k">峰值</span><span class="v" id="stMax">0</span></div>
-    <div class="cell"><span class="k">事件/秒</span><span class="v" id="stEps">0</span></div>
-    <div class="cell"><span class="k">FPS</span><span class="v" id="stFps">--</span></div>
-    <div class="cell"><span class="k">视图</span><span class="v small" id="stView">--</span></div>
+    <div class="cell brand-cell"><span id="brand">Touch Tester</span></div>
+    <div class="cell stat"><span class="k">触点</span><span class="v" id="stActive">0</span><span class="k">峰</span><span class="v" id="stMax">0</span></div>
+    <div class="cell stat"><span class="k">eps</span><span class="v" id="stEps">0</span><span class="k">fps</span><span class="v" id="stFps">--</span></div>
     <div class="cell spacer"></div>
     <div class="cell btns">
       <button id="btnFs" title="全屏">全屏</button>
-      <button id="btnLog" title="事件日志">日志</button>
       <button id="btnCfg" title="设置">设置</button>
-      <button id="btnMotion" title="运动传感器"> Motion</button>
       <button id="btnClear" title="清屏">清屏</button>
     </div>
   </div>
 
   <div id="settings" hidden>
     <h3>设置</h3>
+    <div class="cfgbtns">
+      <button id="btnLog" class="on" title="事件日志">日志</button>
+      <button id="btnMotion" title="运动传感器">Motion</button>
+    </div>
     <label>轨迹长度<input type="range" id="rTrail" min="10" max="400" value="120"></label>
-    <label>点大小<input type="range" id="rSize" min="4" max="40" value="10"></label>
+    <label>点大小<input type="range" id="rSize" min="3" max="30" value="8"></label>
     <label><span>显示坐标</span><input type="checkbox" id="cCoord" checked></label>
     <label><span>捕获合并事件</span><input type="checkbox" id="cCoalesced" checked></label>
     <label><span>预测事件(Chromium)</span><input type="checkbox" id="cPredicted" checked></label>
@@ -365,6 +382,7 @@
     <label><span>保持屏幕常亮</span><input type="checkbox" id="cWake" checked></label>
     <label><span>网格</span><input type="checkbox" id="cGrid" checked></label>
     <div class="capgrid" id="capGrid"></div>
+    <div class="viewline" id="stView">--</div>
   </div>
 
   <div id="cards">
@@ -427,7 +445,7 @@
     motionOn: false
   };
 
-  var CFG = { trail: 120, size: 10, coord: true, coalesced: true, predicted: true,
+  var CFG = { trail: 120, size: 8, coord: true, coalesced: true, predicted: true,
               vib: true, wake: true, grid: true };
 
   function pointColor(id) { return PALETTE[Math.abs(id) % PALETTE.length]; }
@@ -450,11 +468,11 @@
 
   function updateViewInfo() {
     var vv = W.visualViewport;
-    var t = (screen.orientation && screen.orientation.type) ||
+    var t = (screen.orientation && screen.orientation.type || '').split('-')[0] ||
             (W.orientation !== undefined ? (Math.abs(W.orientation) === 90 ? 'landscape' : 'portrait') : '--');
     D.getElementById('stView').textContent =
-      cw + '×' + ch + ' @' + (W.devicePixelRatio || 1).toFixed(2) +
-      (vv && Math.abs(vv.scale - 1) > 0.01 ? ' z' + vv.scale.toFixed(2) : '') + ' ' + t;
+      cw + '×' + ch + ' @' + (W.devicePixelRatio || 1).toFixed(2) + ' ' + t +
+      (vv && Math.abs(vv.scale - 1) > 0.01 ? ' 缩放' + vv.scale.toFixed(2) : '');
   }
 
   /* ================= 日志 ================= */
@@ -714,7 +732,9 @@
 
   function drawPoint(p, now) {
     var c = p.color;
-    var r = CFG.size * (0.5 + (p.force || p.pressure || 0) * 0.7);
+    var base = CFG.size;
+    var f = Math.max(0, Math.min(p.force || p.pressure || 0, 1));
+    var r = Math.min(base * (0.5 + f * 0.6), base * 1.15);
 
     // 轨迹:采样点折线,越靠近触点越亮越粗,抬起后随清屏消失
     var s = p.samples;
@@ -734,30 +754,34 @@
       ctx.globalAlpha = 1;
     }
 
-    // 触摸接触面椭圆
-    if (p.rx > 0 && p.ry > 0 && (p.rx < 90)) {
+    // 触摸接触面椭圆(限幅,部分安卓机 radiusX 可达 60px+)
+    var ex = Math.min(p.rx || 0, base + 12);
+    var ey = Math.min(p.ry || 0, base + 12);
+    if (ex > r + 2 && ey > r + 2) {
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate((p.rot || 0) * Math.PI / 180);
       ctx.strokeStyle = c;
-      ctx.globalAlpha = 0.5;
+      ctx.globalAlpha = 0.4;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.ellipse(0, 0, Math.max(p.rx, 2), Math.max(p.ry, 2), 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, Math.max(ex, 2), Math.max(ey, 2), 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
     }
 
-    // 速度矢量
-    if (p.vx > 0.5) {
+    // 速度矢量(限长,避免高速时拖出长线)
+    var sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+    if (sp > 1) {
+      var k = Math.min(sp, 800) / sp * 0.05;
       ctx.strokeStyle = c;
       ctx.globalAlpha = 0.4;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x + p.vx * 0.06, p.y + p.vy * 0.06);
+      ctx.lineTo(p.x + p.vx * k, p.y + p.vy * k);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
@@ -985,6 +1009,7 @@
     ' · Touch ' + (ENV.touchEvents ? '✓' : '✗') +
     ' · Fullscreen ' + (ENV.fullscreen ? '✓' : '✗') +
     ' · UA: ' + (N.userAgentData && N.userAgentData.platform || N.platform || '');
+  if (!ENV.fullscreen) D.getElementById('fsHint').hidden = false;
 
   /* ================= 启动 ================= */
   D.getElementById('btnFs').addEventListener('click', toggleFs);

@@ -1,0 +1,12 @@
+{
+  "name": "Touch Tester",
+  "short_name": "TouchTester",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07090d",
+  "theme_color": "#07090d",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
