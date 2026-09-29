@@ -1056,6 +1056,19 @@
   });
 
   resize();
+
+  /* Service Worker:离线可用(GitHub Pages HTTPS 下生效) */
+  if ('serviceWorker' in N &&
+      (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    N.serviceWorker.register('sw.js').then(function (reg) {
+      log('sys', 'Service Worker 已注册 · 可离线使用');
+      reg.addEventListener('updatefound', function () {
+        log('sys', '发现新版本,关闭页面后重新打开即生效');
+      });
+    }).catch(function (err) {
+      log('sys', 'SW 注册失败: ' + err.message);
+    });
+  }
 })();
 </script>
 </body>
