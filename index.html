@@ -82,7 +82,11 @@
   }
   #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-  /* ============ HUD:除顶栏和设置抽屉外全部穿透,不拦截触控 ============ */
+  /* ============ HUD:除顶栏和设置抽屉外全部穿透,不拦截触控 ============
+     分两层:下层(卡片/日志, z4)被画布(z5)盖住,触摸点绘制在其之上;
+     顶栏/设置(z10)保持在最上。全部 pointer-events 穿透,除顶栏和抽屉。 */
+  .hud-low { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
+  #stage { z-index: 5; }
   .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
   #topbar, #settings { pointer-events: auto; }
 
@@ -384,7 +388,10 @@
     <div class="capgrid" id="capGrid"></div>
     <div class="viewline" id="stView">--</div>
   </div>
+</div>
 
+<!-- 下层 HUD:被画布盖住,触摸点绘制在其上 -->
+<div class="hud-low">
   <div id="cards">
     <div class="card" id="motionCard" hidden>
       <div class="hd"><span>Motion</span><span class="dur" id="motionHz">--Hz</span></div>
