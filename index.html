@@ -1017,6 +1017,12 @@
     ' · Fullscreen ' + (ENV.fullscreen ? '✓' : '✗') +
     ' · UA: ' + (N.userAgentData && N.userAgentData.platform || N.platform || '');
   if (!ENV.fullscreen) D.getElementById('fsHint').hidden = false;
+  var standalone = N.standalone === true ||
+    (W.matchMedia && W.matchMedia('(display-mode: standalone)').matches);
+  if (standalone) {
+    D.getElementById('fsHint').hidden = true;
+    D.getElementById('fsHint').dataset.ok = '1';
+  }
 
   /* ================= 启动 ================= */
   D.getElementById('btnFs').addEventListener('click', toggleFs);
@@ -1040,7 +1046,8 @@
     resize();
     requestAnimationFrame(draw);
     requestWake();
-    log('sys', '会话开始 · ' + cw + '×' + ch + ' dpr' + dpr + ' · 最多 ' + ENV.maxTouchPoints + ' 触点');
+    log('sys', '会话开始 · ' + cw + '×' + ch + ' dpr' + dpr + ' · 最多 ' + ENV.maxTouchPoints + ' 触点' +
+      (standalone ? ' · standalone 全屏模式' : ''));
     if (!ENV.fullscreen) log('sys', '当前环境不支持全屏(如 iPhone Safari),直接测试即可');
   }
   D.getElementById('startBtn').addEventListener('click', function () {
