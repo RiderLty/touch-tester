@@ -385,6 +385,7 @@
       <button id="btnLog" class="on" title="事件日志">日志</button>
       <button id="btnMotion" title="运动传感器">Motion</button>
     </div>
+    <label><span>轨迹不消失(抬起才清)</span><input type="checkbox" id="cPersist" checked></label>
     <label>轨迹长度<input type="range" id="rTrail" min="10" max="400" value="120"></label>
     <label>点大小<input type="range" id="rSize" min="3" max="30" value="8"></label>
     <label><span>显示坐标</span><input type="checkbox" id="cCoord" checked></label>
@@ -460,7 +461,7 @@
     motionOn: false
   };
 
-  var CFG = { trail: 120, size: 8, coord: true, coalesced: true, predicted: true,
+  var CFG = { trail: 120, persist: true, size: 8, coord: true, coalesced: true, predicted: true,
               vib: true, wake: true, grid: true };
 
   function pointColor(id) { return PALETTE[Math.abs(id) % PALETTE.length]; }
@@ -530,6 +531,13 @@
     return p;
   }
 
+  function pushSample(p, x, y) {
+    p.samples.push({ x: x, y: y });
+    // 不消失模式保留全程轨迹(仅设 3000 点硬上限防长按卡顿);否则按滑杆长度裁剪
+    var max = CFG.persist ? 3000 : CFG.trail;
+    while (p.samples.length > max) p.samples.shift();
+  }
+
   function sample(p, x, y) {
     var now = performance.now();
     var dt = (now - p.lastSample) / 1000;
@@ -541,8 +549,7 @@
     }
     p.x = x; p.y = y;
     p.lastSample = now;
-    p.samples.push({ x: x, y: y });
-    while (p.samples.length > CFG.trail) p.samples.shift();
+    pushSample(p, x, y);
   }
 
   function removePoint(id) {
@@ -584,8 +591,7 @@
         p.coalesced = nC;
         // 合并事件只补充轨迹采样点,不改变圆环位置
         if (nC > 1) {
-          for (var i = 0; i < nC; i++) p.samples.push({ x: ce[i].clientX, y: ce[i].clientY });
-          while (p.samples.length > CFG.trail) p.samples.shift();
+          for (var i = 0; i < nC; i++) pushSample(p, ce[i].clientX, ce[i].clientY);
         }
       }
       if (CFG.predicted && e.getPredictedEvents) {
@@ -967,6 +973,7 @@
     el.addEventListener('input', function () { fn(+el.value); });
   }
   bindRange('rTrail', function (v) { CFG.trail = v; });
+  bindCheck('cPersist', 'persist');
   bindRange('rSize', function (v) { CFG.size = v; });
   function bindCheck(id, key) {
     var el = D.getElementById(id);
