@@ -82,9 +82,16 @@
   }
   #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-  /* ============ HUD:除顶栏和设置抽屉外全部穿透,不拦截触控 ============
-     分两层:下层(卡片/日志, z4)被画布(z5)盖住,触摸点绘制在其之上;
-     顶栏/设置(z10)保持在最上。全部 pointer-events 穿透,除顶栏和抽屉。 */
+  /* ============ 分层:网格 z3 → 面板 z4 → 透明画布 z5 → 顶栏 z10 ============
+     画布只画轨迹与触点(每帧 clearRect 保持透明),面板从画布下方透出,
+     触摸点绘制在面板之上。全部 pointer-events 穿透,除顶栏和抽屉。 */
+  #gridLayer {
+    position: fixed; inset: 0; z-index: 3; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
+    background-size: 50px 50px;
+  }
   .hud-low { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
   #stage { z-index: 5; }
   .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
@@ -347,6 +354,7 @@
 <div id="stage">
   <canvas id="cv"></canvas>
 </div>
+<div id="gridLayer"></div>
 
 <!-- 起始遮罩:点击进入全屏 -->
 <div id="intro">
@@ -465,8 +473,6 @@
     cv.width = Math.round(cw * dpr);
     cv.height = Math.round(ch * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#07090d';
-    ctx.fillRect(0, 0, cw, ch);
     updateViewInfo();
   }
   W.addEventListener('resize', resize);
@@ -705,11 +711,8 @@
       fpsAcc = 0; fpsN = 0;
     }
 
-    // 每帧完全清屏,轨迹由活跃触点的采样点重绘,抬起即消失
-    ctx.fillStyle = '#07090d';
-    ctx.fillRect(0, 0, cw, ch);
-
-    if (CFG.grid) drawGrid();
+    // 每帧清屏;画布保持透明,下层网格与信息面板透出
+    ctx.clearRect(0, 0, cw, ch);
 
     // 鼠标悬停十字线
     if (S.hover) {
@@ -725,16 +728,6 @@
     if (frame++ % 4 === 0) renderCards();
     if (frame % 15 === 0) updateStats();
     requestAnimationFrame(draw);
-  }
-
-  function drawGrid() {
-    ctx.strokeStyle = 'rgba(148,163,184,0.07)';
-    ctx.lineWidth = 1;
-    var step = 50;
-    ctx.beginPath();
-    for (var x = step; x < cw; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, ch); }
-    for (var y = step; y < ch; y += step) { ctx.moveTo(0, y); ctx.lineTo(cw, y); }
-    ctx.stroke();
   }
 
   function drawPoint(p, now) {
@@ -983,7 +976,10 @@
   bindCheck('cCoalesced', 'coalesced');
   bindCheck('cPredicted', 'predicted');
   bindCheck('cVib', 'vib');
-  bindCheck('cGrid', 'grid');
+  D.getElementById('cGrid').addEventListener('change', function () {
+    CFG.grid = this.checked;
+    D.getElementById('gridLayer').hidden = !this.checked;
+  });
   D.getElementById('cWake').addEventListener('change', function () {
     CFG.wake = this.checked;
     if (!CFG.wake && wakeSentinel) { wakeSentinel.release().catch(function () {}); wakeSentinel = null; }
@@ -1027,8 +1023,7 @@
   /* ================= 启动 ================= */
   D.getElementById('btnFs').addEventListener('click', toggleFs);
   D.getElementById('btnClear').addEventListener('click', function () {
-    ctx.fillStyle = '#07090d';
-    ctx.fillRect(0, 0, cw, ch);
+    ctx.clearRect(0, 0, cw, ch);
     log('sys', '画布已清空');
   });
   D.getElementById('btnLog').addEventListener('click', function () {
