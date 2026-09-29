@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Touch Tester</title>
+<!--
+  设计:测试仪器风格 — 单一暗色主题(示波器/试验台),数据全部等宽字体,
+  每个触点分配独立荧光色,光圈追随手指,身后拖出渐亮轨迹,抬起即消失。
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============ tokens ============ */
+  :root {
+    --bg: #07090d;            /* 仪器底色:近黑,偏蓝 */
+    --surface: rgba(13, 17, 23, 0.82);
+    --surface-solid: #0d1117;
+    --edge: rgba(148, 163, 184, 0.18);
+    --edge-strong: rgba(148, 163, 184, 0.38);
+    --fg: #e6ebf1;
+    --dim: #7f8b9b;
+    --faint: #4a5563;
+    --accent: #e8b45a;        /* 琥珀,仪表指示色 */
+    --accent-dim: rgba(232, 180, 90, 0.35);
+    --good: #6ee7a0;
+    --bad: #f07a7a;
+    /* 触点荧光色板 */
+    --p0: #ff7a59; --p1: #e8b45a; --p2: #6ee7a0; --p3: #4fd8e0;
+    --p4: #6aa5ff; --p5: #c98bff; --p6: #ff7ac8; --p7: #a8e05f;
+    --p8: #ffb3c1; --p9: #7de0c3;
+    --font-display: "Chakra Petch", "PingFang SC", system-ui, sans-serif;
+    --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-display);
+    font-size: 14px;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+  [hidden] { display: none !important; }
+  button {
+    font-family: var(--font-data);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--fg);
+    background: var(--surface);
+    border: 1px solid var(--edge-strong);
+    border-radius: 3px;
+    padding: 6px 10px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  button:hover { border-color: var(--accent-dim); }
+  button:active { background: rgba(232, 180, 90, 0.12); }
+  button:disabled { color: var(--faint); cursor: default; }
+  button.on { border-color: var(--accent); color: var(--accent); }
+
+  /* ============ 舞台 ============ */
+  #stage {
+    position: fixed;
+    inset: 0;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  #stage canvas { position: absolute; inset: 0; display: block; }
+
+  /* ============ HUD ============ */
+  .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  .hud > * { pointer-events: auto; }
+
+  #topbar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    align-items: stretch;
+    gap: 1px;
+    background: var(--edge);
+    border-bottom: 1px solid var(--edge);
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  #topbar .cell {
+    background: var(--surface-solid);
+    padding: 7px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+  }
+  #topbar .cell.btns { flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; }
+  #topbar .cell.spacer { flex: 1; }
+  .k {
+    font-family: var(--font-data);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .v {
+    font-family: var(--font-data);
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .v.small { font-size: 11px; font-weight: 400; color: var(--dim); }
+  #brand {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  /* 触点详情卡片 */
+  #cards {
+    position: absolute;
+    left: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: min(46vw, 340px);
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    border-left: 3px solid var(--pc, var(--accent));
+    border-radius: 3px;
+    padding: 6px 9px;
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    min-width: 0;
+  }
+  .card .hd {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-weight: 600;
+    color: var(--pc, var(--accent));
+    font-size: 11px;
+    margin-bottom: 2px;
+  }
+  .card .hd .dur { color: var(--dim); font-weight: 400; }
+  .card .row { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .row b { color: var(--fg); font-weight: 500; }
+
+  /* 运动传感器卡片 */
+  #motionCard { border-left-color: var(--faint); }
+
+  /* 事件日志 */
+  #logPanel {
+    position: absolute;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    width: min(40vw, 330px);
+    max-height: 38vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    overflow: hidden;
+  }
+  #logPanel .lg-hd {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 9px;
+    border-bottom: 1px solid var(--edge);
+    font-family: var(--font-data);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  #log {
+    overflow-y: auto;
+    padding: 5px 9px 7px;
+    font-family: var(--font-data);
+    font-size: 10px;
+    line-height: 1.6;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  #log .t { color: var(--faint); }
+  #log .ty { font-weight: 600; }
+  #log .rest { color: var(--dim); }
+
+  /* 设置抽屉 */
+  #settings {
+    position: absolute;
+    top: calc(52px + env(safe-area-inset-top, 0px));
+    right: 10px;
+    width: 250px;
+    background: var(--surface-solid);
+    border: 1px solid var(--edge-strong);
+    border-radius: 4px;
+    padding: 12px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  }
+  #settings h3 {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 2px;
+  }
+  #settings label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--dim);
+    min-width: 0;
+  }
+  #settings input[type="checkbox"] { accent-color: var(--accent); }
+  #settings input[type="range"] { width: 110px; accent-color: var(--accent); }
+  #settings .capgrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 10px;
+    font-family: var(--font-data);
+    font-size: 9.5px;
+    line-height: 1.7;
+    border-top: 1px solid var(--edge);
+    padding-top: 8px;
+    margin-top: 2px;
+  }
+  #settings .capgrid span { color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+  #settings .capgrid i { font-style: normal; }
+  #settings .capgrid .ok { color: var(--good); }
+  #settings .capgrid .no { color: var(--bad); }
+
+  /* 起始遮罩 */
+  #intro {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: var(--bg);
+    text-align: center;
+    padding: 24px;
+  }
+  #intro h1 {
+    font-size: clamp(28px, 7vw, 52px);
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--fg);
+  }
+  #intro h1 em { font-style: normal; color: var(--accent); }
+  #intro p {
+    font-family: var(--font-data);
+    font-size: 12px;
+    color: var(--dim);
+    max-width: 420px;
+    line-height: 1.8;
+  }
+  #startBtn {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 14px 34px;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    background: transparent;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  #startBtn:hover { background: rgba(232, 180, 90, 0.1); }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(232, 180, 90, 0.28); }
+    50% { box-shadow: 0 0 0 12px rgba(232, 180, 90, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) { #startBtn { animation: none; } }
+  #intro .caps {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--faint);
+    letter-spacing: 0.06em;
+  }
+
+  @media (max-width: 640px) {
+    #logPanel { width: min(52vw, 300px); }
+    #cards { max-width: 44vw; }
+    .v { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+</div>
+
+<!-- 起始遮罩:点击进入全屏 -->
+<div id="intro">
+  <h1>Touch<em>·</em>Tester</h1>
+  <p>触摸 / 多点触控测试台 — Pointer Events · Touch Events · 轨迹追踪 · 事件日志<br>点击开始将请求进入全屏,随后用手指触碰屏幕即可。</p>
+  <button id="startBtn">点击开始</button>
+  <div class="caps" id="introCaps"></div>
+</div>
+
+<!-- HUD -->
+<div class="hud">
+  <div id="topbar">
+    <div class="cell"><span id="brand">Touch Tester</span></div>
+    <div class="cell"><span class="k">触点</span><span class="v" id="stActive">0</span></div>
+    <div class="cell"><span class="k">峰值</span><span class="v" id="stMax">0</span></div>
+    <div class="cell"><span class="k">事件/秒</span><span class="v" id="stEps">0</span></div>
+    <div class="cell"><span class="k">FPS</span><span class="v" id="stFps">--</span></div>
+    <div class="cell"><span class="k">视图</span><span class="v small" id="stView">--</span></div>
+    <div class="cell spacer"></div>
+    <div class="cell btns">
+      <button id="btnFs" title="全屏">全屏</button>
+      <button id="btnLog" title="事件日志">日志</button>
+      <button id="btnCfg" title="设置">设置</button>
+      <button id="btnMotion" title="运动传感器"> Motion</button>
+      <button id="btnClear" title="清屏">清屏</button>
+    </div>
+  </div>
+
+  <div id="settings" hidden>
+    <h3>设置</h3>
+    <label>轨迹长度<input type="range" id="rTrail" min="10" max="400" value="120"></label>
+    <label>点大小<input type="range" id="rSize" min="6" max="60" value="18"></label>
+    <label><span>显示坐标</span><input type="checkbox" id="cCoord" checked></label>
+    <label><span>捕获合并事件</span><input type="checkbox" id="cCoalesced" checked></label>
+    <label><span>预测事件(Chromium)</span><input type="checkbox" id="cPredicted" checked></label>
+    <label><span>震动反馈</span><input type="checkbox" id="cVib" checked></label>
+    <label><span>保持屏幕常亮</span><input type="checkbox" id="cWake" checked></label>
+    <label><span>网格</span><input type="checkbox" id="cGrid" checked></label>
+    <div class="capgrid" id="capGrid"></div>
+  </div>
+
+  <div id="cards">
+    <div class="card" id="motionCard" hidden>
+      <div class="hd"><span>Motion</span><span class="dur" id="motionHz">--Hz</span></div>
+      <div class="row">α <b id="mAlpha">--</b> β <b id="mBeta">--</b> γ <b id="mGamma">--</b></div>
+      <div class="row">acc <b id="mAcc">--</b></div>
+    </div>
+  </div>
+
+  <div id="logPanel">
+    <div class="lg-hd"><span>事件日志</span><span id="logCount">0</span></div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= 环境探测 ================= */
+  var D = document, W = window, N = navigator;
+  var stage = D.getElementById('stage');
+  var cv = D.getElementById('cv');
+  var ctx = cv.getContext('2d');
+
+  var ENV = {
+    maxTouchPoints: N.maxTouchPoints || 0,
+    pointerEvents: 'PointerEvent' in W,
+    touchEvents: 'ontouchstart' in W,
+    coalesced: !!(W.PointerEvent && W.PointerEvent.prototype.getCoalescedEvents),
+    predicted: !!(W.PointerEvent && W.PointerEvent.prototype.getPredictedEvents),
+    fullscreen: !!(D.documentElement.requestFullscreen || D.documentElement.webkitRequestFullscreen),
+    vibrate: 'vibrate' in N,
+    wakeLock: 'wakeLock' in N,
+    orientation: !!(screen.orientation && screen.orientation.type),
+    deviceorientation: 'DeviceOrientationEvent' in W,
+    visualViewport: 'visualViewport' in W,
+    gestures: 'ongesturestart' in W
+  };
+
+  var PALETTE = ['#ff7a59','#e8b45a','#6ee7a0','#4fd8e0','#6aa5ff','#c98bff','#ff7ac8','#a8e05f','#ffb3c1','#7de0c3'];
+  var EVENT_COLORS = {
+    pdown: '#6ee7a0', pmove: '#7f8b9b', pup: '#f07a7a', pcancel: '#f0b07a',
+    penter: '#4fd8e0', pleave: '#4a5563', pover: '#8f9bb0', pout: '#4a5563',
+    capture: '#c98bff', tstart: '#6ee7a0', tmove: '#4a5563', tend: '#f07a7a',
+    tcancel: '#f0b07a', gesture: '#c98bff', wheel: '#e8b45a', sys: '#e8b45a'
+  };
+
+  /* ================= 状态 ================= */
+  var S = {
+    pointers: new Map(),   // pointerId -> point 对象
+    maxConcurrent: 0,
+    evCount: 0,
+    evTimestamps: [],      // 最近 1s 事件时间戳
+    logTotal: 0,
+    lastEvTime: 0,
+    fps: 0,
+    hover: null,           // 鼠标悬停位置
+    motionOn: false
+  };
+
+  var CFG = { trail: 120, size: 18, coord: true, coalesced: true, predicted: true,
+              vib: true, wake: true, grid: true };
+
+  function pointColor(id) { return PALETTE[Math.abs(id) % PALETTE.length]; }
+
+  /* ================= 画布 ================= */
+  var dpr = 1, cw = 0, ch = 0;
+  function resize() {
+    dpr = Math.min(W.devicePixelRatio || 1, 3);
+    cw = stage.clientWidth; ch = stage.clientHeight;
+    cv.width = Math.round(cw * dpr);
+    cv.height = Math.round(ch * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#07090d';
+    ctx.fillRect(0, 0, cw, ch);
+    updateViewInfo();
+  }
+  W.addEventListener('resize', resize);
+  W.addEventListener('orientationchange', function () { setTimeout(resize, 300); });
+  if (W.visualViewport) W.visualViewport.addEventListener('resize', updateViewInfo);
+
+  function updateViewInfo() {
+    var vv = W.visualViewport;
+    var t = (screen.orientation && screen.orientation.type) ||
+            (W.orientation !== undefined ? (Math.abs(W.orientation) === 90 ? 'landscape' : 'portrait') : '--');
+    D.getElementById('stView').textContent =
+      cw + '×' + ch + ' @' + (W.devicePixelRatio || 1).toFixed(2) +
+      (vv && Math.abs(vv.scale - 1) > 0.01 ? ' z' + vv.scale.toFixed(2) : '') + ' ' + t;
+  }
+
+  /* ================= 日志 ================= */
+  var logEl = D.getElementById('log');
+  var logCountEl = D.getElementById('logCount');
+  function log(type, rest) {
+    var now = performance.now();
+    var dt = S.lastEvTime ? (now - S.lastEvTime) : 0;
+    S.lastEvTime = now;
+    S.logTotal++;
+    logCountEl.textContent = S.logTotal;
+    var line = D.createElement('div');
+    var c = EVENT_COLORS[type] || '#7f8b9b';
+    line.innerHTML = '<span class="t">+' + (dt >= 100 ? dt.toFixed(0) : dt.toFixed(1)) + 'ms</span> ' +
+      '<span class="ty" style="color:' + c + '">' + type + '</span> <span class="rest">' + rest + '</span>';
+    logEl.appendChild(line);
+    while (logEl.childNodes.length > 70) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  /* ================= 触点追踪 ================= */
+  function ensurePoint(id, type) {
+    var p = S.pointers.get(id);
+    if (!p) {
+      p = {
+        id: id, type: type || '?', isPrimary: false,
+        x: 0, y: 0, px: 0, py: 0, sx: 0, sy: 0, gx: 0, gy: 0,
+        pressure: 0, force: 0, w: 0, h: 0, rx: 0, ry: 0, rot: 0,
+        tiltX: 0, tiltY: 0, twist: 0, buttons: 0,
+        coalesced: 0, predicted: 0,
+        born: performance.now(), dist: 0, vx: 0, vy: 0,
+        samples: [],           // 轨迹采样点 {x,y},仅活跃期间保留
+        color: pointColor(id), lastSample: performance.now()
+      };
+      S.pointers.set(id, p);
+      if (S.pointers.size > S.maxConcurrent) {
+        S.maxConcurrent = S.pointers.size;
+        D.getElementById('stMax').textContent = S.maxConcurrent;
+      }
+      bump('active');
+    }
+    return p;
+  }
+
+  function sample(p, x, y) {
+    var now = performance.now();
+    var dt = (now - p.lastSample) / 1000;
+    if (dt > 0) {
+      var dx = x - p.x, dy = y - p.y;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      p.dist += d;
+      p.vx = d / dt; p.vy = dy / dt;
+    }
+    p.x = x; p.y = y;
+    p.lastSample = now;
+    p.samples.push({ x: x, y: y });
+    while (p.samples.length > CFG.trail) p.samples.shift();
+  }
+
+  function removePoint(id) {
+    if (S.pointers.delete(id)) bump('active');
+  }
+
+  function bump(kind) {
+    D.getElementById('stActive').textContent = S.pointers.size;
+  }
+
+  /* ================= 事件:Pointer ================= */
+  function peInfo(e) {
+    return 'id' + e.pointerId + ' ' + e.clientX + ',' + e.clientY;
+  }
+
+  stage.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    var p = ensurePoint(e.pointerId, e.pointerType);
+    fillFromPointerEvent(p, e);
+    p.x = e.clientX; p.y = e.clientY;
+    if (CFG.vib && ENV.vibrate && e.pointerType === 'touch') { try { N.vibrate(8); } catch (_) {} }
+    log('pdown', peInfo(e) + ' pr' + e.pressure.toFixed(2) +
+      (e.width ? ' wh' + Math.round(e.width) + '×' + Math.round(e.height) : ''));
+    // 显式捕获,保证移出元素仍收到 move/up
+    try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  stage.addEventListener('pointermove', function (e) {
+    S.evCount++;
+    S.evTimestamps.push(performance.now());
+    var p = S.pointers.get(e.pointerId);
+    if (p) {
+      fillFromPointerEvent(p, e);
+      sample(p, e.clientX, e.clientY);
+      var nC = 0, nP = 0;
+      if (CFG.coalesced && e.getCoalescedEvents) {
+        var ce = e.getCoalescedEvents();
+        nC = ce ? ce.length : 0;
+        p.coalesced = nC;
+        if (nC > 1) for (var i = 0; i < nC - 1; i++) p.x = ce[i].clientX, p.y = ce[i].clientY; // 末位为准
+      }
+      if (CFG.predicted && e.getPredictedEvents) {
+        var pv = e.getPredictedEvents();
+        p.predicted = pv ? pv.length : 0;
+        p.predPts = pv ? pv.slice(0, 8).map(function (q) { return [q.clientX, q.clientY]; }) : null;
+      }
+      if (e.pointerType !== 'touch' || S.evTimestamps.length % 6 === 0)
+        log('pmove', peInfo(e) + ' pr' + e.pressure.toFixed(2) + (nC ? ' c' + nC : '') + (nP ? ' pred' + nP : ''));
+    } else if (e.pointerType === 'mouse') {
+      S.hover = { x: e.clientX, y: e.clientY };
+      if (S.evTimestamps.length % 20 === 0) log('pmove', peInfo(e) + ' (hover)');
+    }
+  });
+
+  stage.addEventListener('pointerup', function (e) {
+    var p = S.pointers.get(e.pointerId);
+    if (p) { fillFromPointerEvent(p, e); log('pup', peInfo(e) + ' 距' + Math.round(p.dist) + 'px 时' + Math.round(performance.now() - p.born) + 'ms'); }
+    removePoint(e.pointerId);
+    try { stage.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  stage.addEventListener('pointercancel', function (e) {
+    log('pcancel', peInfo(e));
+    removePoint(e.pointerId);
+  });
+
+  ['pointerenter', 'pointerleave', 'pointerover', 'pointerout'].forEach(function (t) {
+    stage.addEventListener(t, function (e) {
+      var name = t.replace('pointer', 'p');
+      var rest = peInfo(e) + ' ' + e.pointerType;
+      if (S.evCount % 5 === 0 || name === 'penter' || name === 'pleave') log(name, rest);
+    });
+  });
+
+  stage.addEventListener('gotpointercapture', function (e) { log('capture', 'got id' + e.pointerId); });
+  stage.addEventListener('lostpointercapture', function (e) { log('capture', 'lost id' + e.pointerId); });
+
+  function fillFromPointerEvent(p, e) {
+    p.isPrimary = e.isPrimary;
+    p.px = e.pageX; p.py = e.pageY;
+    p.sx = e.screenX; p.sy = e.screenY;
+    p.pressure = e.pressure || 0;
+    p.force = (e.force !== undefined) ? e.force : p.force;
+    p.w = e.width || 0; p.h = e.height || 0;
+    p.rx = e.width ? e.width / 2 : p.rx;
+    p.ry = e.height ? e.height / 2 : p.ry;
+    p.tiltX = e.tiltX || 0; p.tiltY = e.tiltY || 0;
+    p.twist = e.twist || 0;
+    p.buttons = e.buttons || 0;
+    p.type = e.pointerType;
+    p.tangential = e.tangentialPressure || 0;
+  }
+
+  /* ================= 事件:Touch(补充 radius/rotation/force) ================= */
+  function touchHandler(name, evName) {
+    return function (e) {
+      e.preventDefault(); // 阻止滚动 / 双击缩放
+      var ts = e.changedTouches;
+      var parts = [];
+      for (var i = 0; i < ts.length; i++) {
+        var t = ts[i];
+        // Touch 对象 identifier 与 PointerId 不一定一致,按值匹配最近的指针
+        var p = null, best = 1e9;
+        S.pointers.forEach(function (q) {
+          if (q.type !== 'touch') return;
+          var d = Math.abs(q.x - t.clientX) + Math.abs(q.y - t.clientY);
+          if (d < best) { best = d; p = q; }
+        });
+        if (p && best < 60) {
+          p.force = t.force || p.force;
+          p.rx = t.radiusX || p.rx;
+          p.ry = t.radiusY || p.ry;
+          p.rot = t.rotationAngle || p.rot;
+          p.touchId = t.identifier;
+          p.gx = t.pageX; p.gy = t.pageY;
+        }
+        if (name === 'tstart' || name === 'tend') parts.push('id' + t.identifier + '@' + t.clientX + ',' + t.clientY);
+      }
+      if (name === 'tstart' || name === 'tend' || name === 'tcancel' || S.evTimestamps.length % 30 === 0)
+        log(name, (parts.join(' ') || ts.length + ' point(s)') + ' total:' + e.touches.length);
+    };
+  }
+  stage.addEventListener('touchstart', touchHandler('tstart'), { passive: false });
+  stage.addEventListener('touchmove', touchHandler('tmove'), { passive: false });
+  stage.addEventListener('touchend', touchHandler('tend'), { passive: false });
+  stage.addEventListener('touchcancel', touchHandler('tcancel'), { passive: false });
+
+  /* Safari 手势事件(双指捏合系统级) */
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) {
+    stage.addEventListener(t, function (e) {
+      e.preventDefault();
+      log('gesture', t.slice(7) + ' scale' + e.scale.toFixed(2) + ' rot' + (e.rotation || 0).toFixed(1) + '°');
+    }, { passive: false });
+  });
+
+  stage.addEventListener('wheel', function (e) {
+    log('wheel', 'd' + e.deltaY + ' ' + e.deltaMode);
+  }, { passive: true });
+
+  stage.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  D.addEventListener('dblclick', function (e) { e.preventDefault(); });
+  D.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+
+  /* ================= 事件计数(通用) ================= */
+  ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend', 'touchcancel'].forEach(function (t) {
+    stage.addEventListener(t, function () {
+      S.evCount++;
+      S.evTimestamps.push(performance.now());
+    });
+  });
+
+  /* ================= 渲染 ================= */
+  var lastFrame = performance.now(), fpsAcc = 0, fpsN = 0, frame = 0;
+
+  function draw() {
+    var now = performance.now();
+    var dt = now - lastFrame;
+    lastFrame = now;
+    if (dt > 0) { fpsAcc += 1000 / dt; fpsN++; }
+    if (fpsN >= 20) {
+      D.getElementById('stFps').textContent = Math.round(fpsAcc / fpsN);
+      fpsAcc = 0; fpsN = 0;
+    }
+
+    // 每帧完全清屏,轨迹由活跃触点的采样点重绘,抬起即消失
+    ctx.fillStyle = '#07090d';
+    ctx.fillRect(0, 0, cw, ch);
+
+    if (CFG.grid) drawGrid();
+
+    // 鼠标悬停十字线
+    if (S.hover) {
+      ctx.strokeStyle = 'rgba(127,139,155,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(S.hover.x - 14, S.hover.y); ctx.lineTo(S.hover.x + 14, S.hover.y);
+      ctx.moveTo(S.hover.x, S.hover.y - 14); ctx.lineTo(S.hover.x, S.hover.y + 14);
+      ctx.stroke();
+    }
+
+    S.pointers.forEach(function (p) { drawPoint(p, now); });
+    if (frame++ % 4 === 0) renderCards();
+    if (frame % 15 === 0) updateStats();
+    requestAnimationFrame(draw);
+  }
+
+  function drawGrid() {
+    ctx.strokeStyle = 'rgba(148,163,184,0.07)';
+    ctx.lineWidth = 1;
+    var step = 50;
+    ctx.beginPath();
+    for (var x = step; x < cw; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, ch); }
+    for (var y = step; y < ch; y += step) { ctx.moveTo(0, y); ctx.lineTo(cw, y); }
+    ctx.stroke();
+  }
+
+  function drawPoint(p, now) {
+    var c = p.color;
+    var r = CFG.size * (0.6 + (p.force || p.pressure || 0) * 1.4);
+
+    // 轨迹:采样点折线,越靠近触点越亮越粗,抬起后随清屏消失
+    var s = p.samples;
+    if (s.length > 1) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (var i = 1; i < s.length; i++) {
+        var a = i / s.length;
+        ctx.strokeStyle = c;
+        ctx.globalAlpha = 0.06 + a * 0.74;
+        ctx.lineWidth = 1 + a * 3;
+        ctx.beginPath();
+        ctx.moveTo(s[i - 1].x, s[i - 1].y);
+        ctx.lineTo(s[i].x, s[i].y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // 触摸接触面椭圆
+    if (p.rx > 0 && p.ry > 0 && (p.rx < 90)) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((p.rot || 0) * Math.PI / 180);
+      ctx.strokeStyle = c;
+      ctx.globalAlpha = 0.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, Math.max(p.rx, 2), Math.max(p.ry, 2), 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
+    // 速度矢量
+    if (p.vx > 0.5) {
+      ctx.strokeStyle = c;
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + p.vx * 0.06, p.y + p.vy * 0.06);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // 主圆
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 2.5;
+    ctx.globalAlpha = 0.95;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // 内芯,按压力填充
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.25 + (p.force || p.pressure || 0) * 0.6;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // isPrimary 标记
+    if (p.isPrimary) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 6, -Math.PI / 2, Math.PI * 1.5);
+      ctx.strokeStyle = c;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // 预测点(空心小圈)
+    if (p.predPts && CFG.predicted) {
+      ctx.strokeStyle = c;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 1;
+      p.predPts.forEach(function (q) {
+        ctx.beginPath();
+        ctx.arc(q[0], q[1], 3, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // 标签
+    if (CFG.coord) {
+      ctx.font = '10px "IBM Plex Mono", monospace';
+      ctx.fillStyle = c;
+      ctx.fillText('P' + p.id + ' ' + Math.round(p.x) + ',' + Math.round(p.y), p.x + r + 6, p.y - r - 4);
+    }
+  }
+
+  /* ================= 详情卡片 ================= */
+  var cardsEl = D.getElementById('cards');
+  var cardEls = new Map();
+
+  function fmt(n, u) { return (Math.round(n * 10) / 10) + (u || ''); }
+
+  function renderCards() {
+    var seen = new Set();
+    S.pointers.forEach(function (p) {
+      seen.add(p.id);
+      var el = cardEls.get(p.id);
+      if (!el) {
+        el = D.createElement('div');
+        el.className = 'card';
+        el.style.setProperty('--pc', p.color);
+        cardsEl.appendChild(el);
+        cardEls.set(p.id, el);
+      }
+      var dur = (performance.now() - p.born) / 1000;
+      el.innerHTML =
+        '<div class="hd"><span>' + p.type + ' P' + p.id + (p.touchId !== undefined ? ' / T' + p.touchId : '') +
+        (p.isPrimary ? ' ★' : '') + '</span><span class="dur">' + dur.toFixed(2) + 's</span></div>' +
+        '<div class="row">client <b>' + Math.round(p.x) + ',' + Math.round(p.y) + '</b>' +
+        ' page <b>' + Math.round(p.px) + ',' + Math.round(p.py) + '</b></div>' +
+        '<div class="row">screen <b>' + Math.round(p.sx) + ',' + Math.round(p.sy) + '</b>' +
+        ' pr <b>' + (p.pressure || p.force || 0).toFixed(2) + '</b></div>' +
+        '<div class="row">radius <b>' + fmt(p.rx) + '×' + fmt(p.ry) + '</b>' +
+        ' rot <b>' + fmt(p.rot, '°') + '</b>' +
+        ' tilt <b>' + p.tiltX + ',' + p.tiltY + '</b></div>' +
+        '<div class="row">速度 <b>' + fmt(Math.sqrt(p.vx * p.vx + p.vy * p.vy), 'px/s') + '</b>' +
+        ' 距离 <b>' + Math.round(p.dist) + '</b>' +
+        ' 合并 <b>' + (p.coalesced || '-') + '</b></div>';
+    });
+    cardEls.forEach(function (el, id) {
+      if (!seen.has(id)) { el.remove(); cardEls.delete(id); }
+    });
+  }
+
+  /* ================= 统计 ================= */
+  function updateStats() {
+    var now = performance.now();
+    while (S.evTimestamps.length && now - S.evTimestamps[0] > 1000) S.evTimestamps.shift();
+    D.getElementById('stEps').textContent = S.evTimestamps.length;
+  }
+
+  /* ================= 全屏 ================= */
+  function toggleFs() {
+    var el = D.documentElement;
+    var fsEl = D.fullscreenElement || D.webkitFullscreenElement;
+    if (fsEl) {
+      (D.exitFullscreen || D.webkitExitFullscreen || function () {}).call(D);
+    } else {
+      var req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (req) {
+        var r = req.call(el);
+        if (r && r.catch) r.catch(function () { log('sys', '全屏被拒绝'); });
+      } else {
+        log('sys', '此浏览器不支持全屏 API');
+      }
+    }
+  }
+  D.addEventListener('fullscreenchange', function () {
+    log('sys', 'fullscreenchange: ' + !!D.fullscreenElement);
+    D.getElementById('btnFs').classList.toggle('on', !!D.fullscreenElement);
+    setTimeout(resize, 100);
+  });
+
+  /* ================= Wake Lock ================= */
+  var wakeSentinel = null;
+  function requestWake() {
+    if (!CFG.wake || !ENV.wakeLock) return;
+    N.wakeLock.request('screen').then(function (s) {
+      wakeSentinel = s;
+      log('sys', 'WakeLock 已获取');
+      s.addEventListener('release', function () { wakeSentinel = null; });
+    }).catch(function (err) { log('sys', 'WakeLock 拒绝: ' + err.name); });
+  }
+  D.addEventListener('visibilitychange', function () {
+    if (D.visibilityState === 'visible' && CFG.wake && !wakeSentinel) requestWake();
+  });
+
+  /* ================= 运动传感器 ================= */
+  var motionCard = D.getElementById('motionCard');
+  var moCount = 0, moT0 = 0;
+  function toggleMotion() {
+    if (S.motionOn) {
+      W.removeEventListener('deviceorientation', onOri);
+      W.removeEventListener('devicemotion', onMot);
+      S.motionOn = false;
+      motionCard.hidden = true;
+      D.getElementById('btnMotion').classList.remove('on');
+      log('sys', 'Motion 监听已停止');
+      return;
+    }
+    var start = function () {
+      W.addEventListener('deviceorientation', onOri);
+      W.addEventListener('devicemotion', onMot);
+      S.motionOn = true;
+      motionCard.hidden = false;
+      D.getElementById('btnMotion').classList.add('on');
+      moT0 = performance.now(); moCount = 0;
+      log('sys', 'Motion 监听已启动');
+    };
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(function (s) { log('sys', 'Motion 权限: ' + s); if (s === 'granted') start(); })
+        .catch(function (err) { log('sys', 'Motion 权限失败: ' + err.message); });
+    } else start();
+  }
+  function onOri(e) {
+    D.getElementById('mAlpha').textContent = e.alpha == null ? '--' : e.alpha.toFixed(1);
+    D.getElementById('mBeta').textContent = e.beta == null ? '--' : e.beta.toFixed(1);
+    D.getElementById('mGamma').textContent = e.gamma == null ? '--' : e.gamma.toFixed(1);
+    moCount++;
+    var el = (performance.now() - moT0) / 1000;
+    if (el > 0.5) D.getElementById('motionHz').textContent = Math.round(moCount / el) + 'Hz';
+  }
+  function onMot(e) {
+    var a = e.accelerationIncludingGravity;
+    if (a) D.getElementById('mAcc').textContent =
+      (a.x == null ? '--' : a.x.toFixed(1)) + ',' + (a.y == null ? '--' : a.y.toFixed(1)) + ',' + (a.z == null ? '--' : a.z.toFixed(1));
+    if (e.interval) D.getElementById('motionHz').textContent = Math.round(1000 / e.interval) + 'Hz';
+  }
+
+  /* ================= 设置面板 ================= */
+  var cfgEl = D.getElementById('settings');
+  D.getElementById('btnCfg').addEventListener('click', function () {
+    cfgEl.hidden = !cfgEl.hidden;
+    this.classList.toggle('on', !cfgEl.hidden);
+  });
+  function bindRange(id, fn) {
+    var el = D.getElementById(id);
+    el.addEventListener('input', function () { fn(+el.value); });
+  }
+  bindRange('rTrail', function (v) { CFG.trail = v; });
+  bindRange('rSize', function (v) { CFG.size = v; });
+  function bindCheck(id, key) {
+    var el = D.getElementById(id);
+    el.addEventListener('change', function () { CFG[key] = el.checked; });
+  }
+  bindCheck('cCoord', 'coord');
+  bindCheck('cCoalesced', 'coalesced');
+  bindCheck('cPredicted', 'predicted');
+  bindCheck('cVib', 'vib');
+  bindCheck('cGrid', 'grid');
+  D.getElementById('cWake').addEventListener('change', function () {
+    CFG.wake = this.checked;
+    if (!CFG.wake && wakeSentinel) { wakeSentinel.release().catch(function () {}); wakeSentinel = null; }
+    else if (CFG.wake) requestWake();
+  });
+
+  /* 能力表 */
+  var capDefs = [
+    ['maxTouchPoints', ENV.maxTouchPoints + ' 点'],
+    ['PointerEvent', ENV.pointerEvents],
+    ['TouchEvent', ENV.touchEvents],
+    ['Coalesced', ENV.coalesced],
+    ['Predicted', ENV.predicted],
+    ['Fullscreen', ENV.fullscreen],
+    ['Vibrate', ENV.vibrate],
+    ['WakeLock', ENV.wakeLock],
+    ['Orientation', ENV.orientation],
+    ['DeviceOri', ENV.deviceorientation],
+    ['VisualVP', ENV.visualViewport],
+    ['Safari手势', ENV.gestures]
+  ];
+  D.getElementById('capGrid').innerHTML = capDefs.map(function (c) {
+    var ok = c[1] === true || (typeof c[1] === 'string' && c[1] !== '0 点');
+    return '<span>' + c[0] + '</span><i class="' + (ok ? 'ok' : 'no') + '">' +
+      (c[1] === true ? '✓' : c[1] === false ? '✗' : c[1]) + '</i>';
+  }).join('');
+  D.getElementById('introCaps').textContent =
+    'maxTouchPoints: ' + ENV.maxTouchPoints +
+    ' · Pointer ' + (ENV.pointerEvents ? '✓' : '✗') +
+    ' · Touch ' + (ENV.touchEvents ? '✓' : '✗') +
+    ' · Fullscreen ' + (ENV.fullscreen ? '✓' : '✗') +
+    ' · UA: ' + (N.userAgentData && N.userAgentData.platform || N.platform || '');
+
+  /* ================= 启动 ================= */
+  D.getElementById('btnFs').addEventListener('click', toggleFs);
+  D.getElementById('btnClear').addEventListener('click', function () {
+    ctx.fillStyle = '#07090d';
+    ctx.fillRect(0, 0, cw, ch);
+    log('sys', '画布已清空');
+  });
+  D.getElementById('btnLog').addEventListener('click', function () {
+    var el = D.getElementById('logPanel');
+    el.hidden = !el.hidden;
+    this.classList.toggle('on', !el.hidden);
+  });
+  D.getElementById('btnMotion').addEventListener('click', toggleMotion);
+
+  var started = false;
+  function start() {
+    if (started) return;
+    started = true;
+    D.getElementById('intro').hidden = true;
+    resize();
+    requestAnimationFrame(draw);
+    requestWake();
+    log('sys', '会话开始 · ' + cw + '×' + ch + ' dpr' + dpr + ' · 最多 ' + ENV.maxTouchPoints + ' 触点');
+    if (!ENV.fullscreen) log('sys', '当前环境不支持全屏(如 iPhone Safari),直接测试即可');
+  }
+  D.getElementById('startBtn').addEventListener('click', function () {
+    toggleFs(); // 失败不阻塞,日志会记录
+    start();
+  });
+
+  resize();
+})();
+</script>
+</body>
+</html>
