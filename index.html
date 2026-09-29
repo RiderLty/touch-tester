@@ -357,7 +357,7 @@
   <div id="settings" hidden>
     <h3>设置</h3>
     <label>轨迹长度<input type="range" id="rTrail" min="10" max="400" value="120"></label>
-    <label>点大小<input type="range" id="rSize" min="6" max="60" value="18"></label>
+    <label>点大小<input type="range" id="rSize" min="4" max="40" value="10"></label>
     <label><span>显示坐标</span><input type="checkbox" id="cCoord" checked></label>
     <label><span>捕获合并事件</span><input type="checkbox" id="cCoalesced" checked></label>
     <label><span>预测事件(Chromium)</span><input type="checkbox" id="cPredicted" checked></label>
@@ -427,7 +427,7 @@
     motionOn: false
   };
 
-  var CFG = { trail: 120, size: 18, coord: true, coalesced: true, predicted: true,
+  var CFG = { trail: 120, size: 10, coord: true, coalesced: true, predicted: true,
               vib: true, wake: true, grid: true };
 
   function pointColor(id) { return PALETTE[Math.abs(id) % PALETTE.length]; }
@@ -545,13 +545,17 @@
     var p = S.pointers.get(e.pointerId);
     if (p) {
       fillFromPointerEvent(p, e);
-      sample(p, e.clientX, e.clientY);
-      var nC = 0, nP = 0;
+      sample(p, e.clientX, e.clientY); // 圆环始终以当前事件坐标为准
+      var nC = 0;
       if (CFG.coalesced && e.getCoalescedEvents) {
         var ce = e.getCoalescedEvents();
         nC = ce ? ce.length : 0;
         p.coalesced = nC;
-        if (nC > 1) for (var i = 0; i < nC - 1; i++) p.x = ce[i].clientX, p.y = ce[i].clientY; // 末位为准
+        // 合并事件只补充轨迹采样点,不改变圆环位置
+        if (nC > 1) {
+          for (var i = 0; i < nC; i++) p.samples.push({ x: ce[i].clientX, y: ce[i].clientY });
+          while (p.samples.length > CFG.trail) p.samples.shift();
+        }
       }
       if (CFG.predicted && e.getPredictedEvents) {
         var pv = e.getPredictedEvents();
@@ -710,7 +714,7 @@
 
   function drawPoint(p, now) {
     var c = p.color;
-    var r = CFG.size * (0.6 + (p.force || p.pressure || 0) * 1.4);
+    var r = CFG.size * (0.5 + (p.force || p.pressure || 0) * 0.7);
 
     // 轨迹:采样点折线,越靠近触点越亮越粗,抬起后随清屏消失
     var s = p.samples;
